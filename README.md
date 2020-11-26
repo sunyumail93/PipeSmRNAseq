@@ -1,5 +1,6 @@
 # PipeSmRNAseq
 A comprehensive pipeline for small RNAseq data analysis.
+
 If you have used other Pipe* pipelines, some path/files may be shared, such as the PipelineHomeDir, and scripts in /bin folder.
 
 ## Software prerequisites
