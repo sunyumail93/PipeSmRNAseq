@@ -1,7 +1,7 @@
 # PipeSmRNAseq
 A comprehensive pipeline for small RNAseq data analysis.
 
-If you have used other Pipe* pipelines, some path/files may be shared, such as the PipelineHomeDir, and scripts in /bin folder.
+Some path/files are shared with other Pipe* pipelines, such as the PipelineHomeDir folder, and scripts in /bin folder.
 
 ## Software prerequisites
 This pipeline is designed to run on Linux servers, and requires the following softwares:
@@ -16,11 +16,11 @@ fastqc (optional)
 weblogo (optional)
 PILFER (The main script from PILFER has been included in the ./bin, and no need to install again)
 ```
-Besides the pipeline script PipeSmRNAseq.sh, dependencies are in ./bin folder
+PipeSmRNAseq.sh is the pipeline main script. Other dependencies are in ./bin folder
 
-One UCSC tool (from http://hgdownload.soe.ucsc.edu/admin/exe/) is used: faSize. Other scripts were generated from this project.
+One UCSC tool (from http://hgdownload.soe.ucsc.edu/admin/exe/) is used: faSize.
 
-For more information about the PILFER piRNA cluster defining tool: https://github.com/rishavray/PILFER/blob/master/pipeline.sh
+For more information about the PILFER piRNA cluster prediction tool: https://github.com/rishavray/PILFER/blob/master/pipeline.sh
 
 ## Pipeline setup
 
@@ -50,6 +50,7 @@ mkdir STARIndex
 STAR --runMode genomeGenerate --genomeDir STARIndex --genomeFastaFiles ../Sequence/Ppup.fa --sjdbGTFfile ../Annotation/Ppup.RefSeq.reduced.bed12.geneid.gtf --sjdbOverhang 100
 
 #bowtie index:
+mkdir bowtieIndex
 bowtie-build ../Sequence/Ppup.fa bowtieIndex/bowtieIndex
 
 #Other index files can be automatically generated when running the pipline.
@@ -78,7 +79,7 @@ PipelineHomeDir/
     └── mm10/
       └── Annotation/
         ├── Ppup.RefSeq.reduced.bed12
-        ├── Ppup.RefSeq.reduced.bed12.geneid.gtf
+        └── Ppup.RefSeq.reduced.bed12.geneid.gtf
       └── Index/
         ├── bowtieIndex
         ├── Sm_miRNAAllSpeciesIndex/
@@ -118,7 +119,7 @@ Notes:
 Type the pipeline name, then you will see the manual page:
 
 ```
-PipeRiboseq.sh
+PipeSmRNAseq.sh
 ```
 
 Manual page:
@@ -166,7 +167,7 @@ FastqAdapterTimmer -i SRR9851822.fastq -a AGATCG -o Data.trimmed.fastq
 gzip Data.trimmed.fastq
 ```
 
-3, Run Ribo-seq pipeline:
+3, Run the small RNAseq pipeline:
 
 ```
 PipeSmRNAseq.sh -i Data.trimmed.fastq.gz -g Ppup -p 8 -piCluster
