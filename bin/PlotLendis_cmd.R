@@ -1,6 +1,6 @@
 #PlotLendis_cmd.R
-#This is part of the PipeSmRNA.sh to plot length distribution based on different small RNA categories
-#Output will be Contaminants, miRNA, all smRNA, with and without normalization plots. Total 6 plots.
+#This script is part of the PipeSmRNAseq.sh to plot length distribution based on different small RNA categories
+#Output will be Contaminants, miRNA, mapped smRNA, all smRNA, with and without normalization plots. Total 8 plots.
 #Yu Sun, 2020-11-25
 
 # CurrPath <- dirname(rstudioapi::getSourceEditorContext()$path)
