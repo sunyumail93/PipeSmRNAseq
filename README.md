@@ -174,4 +174,4 @@ PipeSmRNAseq.sh -i Data.trimmed.fastq.gz -g Ppup -p 8 -piCluster
 
 ## Outputs
 
-1, Length distribution of Ribo-seq mapped reads:
+1, Length distribution of small RNA all reads, separated by categories:
