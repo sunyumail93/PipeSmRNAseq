@@ -76,7 +76,7 @@ chmod +x ./bin/faSize
 PipelineHomeDir/
     ├── PipeSmRNAseq.sh
     ├── bin/
-    └── mm10/
+    └── Ppup/
       └── Annotation/
         ├── Ppup.RefSeq.reduced.bed12
         └── Ppup.RefSeq.reduced.bed12.geneid.gtf
@@ -133,6 +133,14 @@ FastqAdapterTimmer
 ```
 
 ![](images/TrimmerUsages.png)
+
+Sometimes we need more trimming at the 5'-end, for example, trim the first 7nt from the left:
+
+```
+FastqSeqClipLeft.py
+```
+
+
 
 ## Examples
 
