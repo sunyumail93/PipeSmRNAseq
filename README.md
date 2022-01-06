@@ -101,7 +101,7 @@ PipelineHomeDir/
         ├── Ppup.snoRNA.fa
         ├── Ppup.snRNA.fa
         ├── Ppup.TE.fa
-        └── mPpup.tRNA.fa
+        └── Ppup.tRNA.fa
     └── susScr11/
        ...
 ```
