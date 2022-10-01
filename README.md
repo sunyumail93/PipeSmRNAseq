@@ -29,6 +29,10 @@ conda install -n pipesmrnaseq -c bioconda git
 conda install -n pipesmrnaseq -c conda-forge r-base
 conda install -n pipesmrnaseq -c bioconda mirdeep2
 
+#If using mirdeep2 to run miRNA prediction (not included in the pipeline), create an env:
+conda create --name mirdeep2
+conda install -n mirdeep2 -c bioconda mirdeep2=2.0.1.2
+
 #Create another env for multiqc if you haven't done this before, due to the conflict with pipesmrnaseq:
 conda create --name multiqc_env
 conda install -n multiqc_env -c bioconda multiqc
