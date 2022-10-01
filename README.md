@@ -1,30 +1,54 @@
 # PipeSmRNAseq
 A comprehensive pipeline for small RNAseq data analysis.
 
-Some path/files are shared with other Pipe* pipelines, such as the PipelineHomeDir folder, and scripts in /bin folder.
+Some folder/files are shared with other Pipe* pipelines (i.e. PipeRNAseq and PipeRiboseq), such as the PipelineHomeDir folder, and scripts in /bin folder.
 
 ## Software prerequisites
-This pipeline is designed to run on Linux servers, and requires the following softwares:
+This pipeline is designed to run on Linux servers, and requires the following softwares. They need to be installed and added to the $PATH before using the pipeline.
 ```
 R
-Python2
+Python3
 STAR
 bowtie
 bedtools
 samtools
 fastqc (optional)
 weblogo (optional)
-PILFER (The main script from PILFER has been included in the ./bin, and no need to install again)
 ```
-PipeSmRNAseq.sh is the pipeline main script. Other dependencies are in ./bin folder
+The above software can also be installed using conda, as below:
+```
+#Create pipesmrnaseq environment
+conda create --name pipesmrnaseq
+conda install -n pipesmrnaseq -c bioconda bowtie2      #This will automatically install python3.7
+conda install -n pipesmrnaseq -c bioconda star
+conda install -n pipesmrnaseq -c bioconda bedtools
+conda install -n pipesmrnaseq -c bioconda samtools
+conda install -n pipesmrnaseq -c bioconda fastqc
+conda install -n pipesmrnaseq -c bioconda git
+conda install -n pipesmrnaseq -c conda-forge r-base
+conda install -n pipesmrnaseq -c bioconda mirdeep2     #An alternative way to quantify miRNAs
+conda install -n pipesmrnaseq -c bioconda weblogo
 
-One UCSC tool (from http://hgdownload.soe.ucsc.edu/admin/exe/) is used: faSize.
+#Create another env for multiqc if you haven't done this before, due to the conflict with pipesmrnaseq:
+conda create --name multiqc_env
+conda install -n multiqc_env -c bioconda multiqc
 
-For more information about the PILFER piRNA cluster prediction tool: https://github.com/rishavray/PILFER/blob/master/pipeline.sh
+#Activate conda env:
+conda activate pipesmrnaseq
+```
+
+PipeSmRNAseq.sh is the pipeline script. Other dependencies are in the ./bin folder.
+
+One UCSC tools (from http://hgdownload.soe.ucsc.edu/admin/exe/) is used: faSize. If the binary file the ./bin folder is not working (Execute ./bin/faSize but got errors), please re-download it by choosing the correct version (e.g. linux.x86_64). The faSize for Mac version can be downloaded here: http://hgdownload.soe.ucsc.edu/admin/exe/macOSX.x86_64, and need to be saved in ./bin folder.
+
+Also, for Mac OS, set the pipeline home directory at PipeSmRNAseq.sh manually:
+`HomeDir="/Users/yusun/Downloads/PipelineHomeDir"`
+
+We suggest using proTRAC (https://www.smallrnagroup.uni-mainz.de/software.html) to predict piRNA clusters, using mapped small RNAs over 23nt from the `*final.Over23.${genome}.bed6.sorted` file
 
 ## Pipeline setup
 
-Here is an example of mm10 genome setup.
+Here is an example of dm6 genome setup.
 
 1, Download scripts from github to Linux server:
 
