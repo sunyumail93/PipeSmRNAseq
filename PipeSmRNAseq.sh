@@ -3,12 +3,15 @@
 #This is a pipeline for small RNAseq FASTQ analysis
 #Inputs: Trimmed (e.g use FastqAdapterTimmer) small RNAseq single-end raw reads in FASTQ format
 #This pipeline will separate rRNA, tRNA, snRNA, snoRNA, reads before charactering miRNAs, and finally piRNAs
-#    For miRNA analysis, we map reads to known annotation, all other species miRNA annotation, and also predict novel miRNAs
-#	 For piRNA analysis, we perform genome mapping and TE mapping.
+#    For miRNA analysis, we map reads to known annotation, all other species miRNA annotation
+#	   For piRNA analysis, we perform genome mapping and TE mapping.
 #Increase the number of genome mapping (or using -reportAll) times will cause the pipeline and piRNA cluster defining step very slow.
 #Example: 
 #PipeSmRNAseq.sh -i Embryo.SmRNAseq.fastq.gz -g mm10 -noqc
 #Version1 basic write up: 2020-11-15, Y.S
+#         continue...bigWig generation, TE direct mapping, etc.
+#Version2 2022-01-12, multiple updates
+#         fit new analysis, remove pilfer piRNA prediction and switch to proTRAC (run externally)
 
 array=( "$@" )
 
@@ -17,11 +20,11 @@ if [ ! -n "$1" ]
 then
   echo "********************************************************************************************"
   echo "*                   PipeSmRNAseq: pipeline for Small RNAseq analysis.                      *"
-  echo "*                            Version 1, 2020-11-15, Y.S                                    *"
+  echo "*                         Version 2, 2022-01-12, Y.S, X.Y                                  *"
   echo "* Usage: `basename $0`                                                                   *"
   echo "*        Required (single end data):                                                       *"
   echo "*                  -i [Data.fastq.gz]                                                      *"
-  echo "*                  -g [mm10/susScr11/Ppup]                                                 *"
+  echo "*                  -g [mm10/susScr11/Ppup/Aful/Ajap]                                       *"
   echo "*        Optional: -p [Number of CPUs, default=1]                                          *"
   echo "*                  -m [Genome mapping mismatch, default=1]                                 *"
   echo "*                  -k [int] [Genome mapping times, default=1]                              *"
@@ -29,13 +32,13 @@ then
   echo "*                  -pre Sequences.fa [Run pre-mapping to Sequences.fa]                     *"
   echo "*                  -noqc [Suppress fastqc]                                                 *"
   echo "*                  -normFactor [Num] [User defined normalization factor, to divide]        *"
-  echo "*                  -piCluster  [Predict piRNA cluster, default off]                        *"
   echo "* Inputs: The fastq file needs to be trimmed, and has .fastq (or.fastq.gz) as suffix       *"
   echo "* Run: Default to run fastqc, rRNA, tRNA, snRNA, snoRNA, miRNA & genomic mapping           *"
   echo "*      Figures will be generated in /plots folder, and bigWig files in /tracks folder      *"
   echo "* Indexes: prepare genome.rRNA.fa, as weel as tRNA, snRNA, snoRNA, hairpin, mature and TE  *"
   echo "*      under genome/Sequence path, and this pipeline will generate bowtie indexes for you  *"
   echo "* Normalization: use per million genomic mapping reads: RPM                                *"
+  echo "* Report all mappings will increase running time, and it will generate more tracks         *"
   echo "* Outputs: All output files will be generated in the same folder as the pipeline submitted *"
   echo "* This pipeline requires additional scripts in PipelineHomeDir/bin folder                  *"
   echo "********************************************************************************************"
@@ -44,25 +47,11 @@ fi
 
 echo "*****************************************************************************"
 echo "*            PipeSmRNAseq: pipeline for Small RNAseq analysis.              *"
-echo "*                       Version 1, 2020-11-15, Y.S                          *"
+echo "*                     Version 2, 2022-01-12, Y.S, X.Y                       *"
 echo "*****************************************************************************"
 echo "0. Loading softwares:"
 #Get current time
 St=`date`
-
-#Load softwares: This part may need to be changed when using different cluster
-#Main tools:STAR, cufflinks, salmon, featureCounts (from Subread package)
-#Other tools: samtools
-
-#Module load for Bluehive:
-#module load fastqc
-#module load bowtie
-#module load bedtools
-#module load samtools
-#module load fastqc         #Optional when -noqc specified.
-#module load rnastar        #Use STAR to rescue some piRNA junction reads.
-#module load r
-#module load weblogo
 
 #Get pipeline directory
 HomeDir=$(dirname `readlink -f $0`)
@@ -89,7 +78,6 @@ gMappingTimes=1
 normDepth=1
 reportAll=0
 normFactor="unassigned"
-piCluster=0
 
 for arg in "$@"
 do
@@ -135,10 +123,6 @@ do
   then
     normFactor=${array[$counter+1]}
     echo '   Use user defined norm factor: '$normFactor
- elif [[ $arg == "-piCluster" ]]
-  then
-    piCluster=1
-    echo '   Run piRNA cluster prediction: '
  fi
   let counter=$counter+1
 done
@@ -149,6 +133,7 @@ done
 OtherDir=smRNA_other && mkdir -p $OtherDir
 miRNADir=smRNA_miRNA && mkdir -p $miRNADir
 piRNADir=smRNA_piRNA && mkdir -p $piRNADir
+TEDir=TE_mapping && mkdir -p $TEDir
 GenomeMappingDir=genome_mapping && mkdir -p $GenomeMappingDir
 FiguresDir=plots && mkdir -p $FiguresDir
 TracksDir=tracks && mkdir -p $TracksDir
@@ -268,20 +253,40 @@ GenerateMiRNACoordinates () {
 
 #Calculate length distribution for unique mapping sam files
 GetUniqueLendis() {
-	Data=$1
-	RefLength=$2
-	grep -v "@" $Data |awk '{print length($10)}' |sort|uniq -c|awk '{OFS="\t";print $2,$1}' > ${Data%.*}.Lendis.t
-	MergeCountsAndFillZeros.py ${Data%.*}.Lendis.t $RefLength ${Data%.*}.Lendis
-	rm -rf ${Data%.*}.Lendis.t
+  DataCurr=$1
+  RefLength=$2
+  grep -v "@" $DataCurr |awk '{print length($10)}' |sort|uniq -c|awk '{OFS="\t";print $2,$1}' > ${DataCurr%.*}.Lendis.t
+  python $HomeDir/bin/MergeCountsAndFillZeros.py ${DataCurr%.*}.Lendis.t $RefLength ${DataCurr%.*}.Lendis
+  rm -rf ${DataCurr%.*}.Lendis.t
 }
 
 #Calculate length distribution for multi mapping sam files
 GetMultiLendis() {
-	Data=$1
-	RefLength=$2
-	grep -v "@" $Data |awk '{print $1,length($10)}' |uniq|awk '{print $2}' |sort|uniq -c|awk '{OFS="\t";print $2,$1}' > ${Data%.*}.Lendis.t
-	MergeCountsAndFillZeros.py ${Data%.*}.Lendis.t $RefLength ${Data%.*}.Lendis
-	rm -rf ${Data%.*}.Lendis.t
+  DataMul=$1
+  RefLength=$2
+  grep -v "@" $DataMul |awk '{print $1,length($10)}' |uniq|awk '{print $2}' |sort|uniq -c|awk '{OFS="\t";print $2,$1}' > ${DataMul%.*}.Lendis.t
+  python $HomeDir/bin/MergeCountsAndFillZeros.py ${DataMul%.*}.Lendis.t $RefLength ${DataMul%.*}.Lendis
+  rm -rf ${DataMul%.*}.Lendis.t
+}
+
+#Convert SAM format to bed2:
+ConvertSAM2Bed2() {
+  SAMData=$1
+  id=${RANDOM}${RANDOM}
+  
+  samtools view -b $SAMData > ${SAMData}.${id}.bam
+  bedtools bamtobed -i ${SAMData}.${id}.bam > ${SAMData}.${id}.bed6
+  python $HomeDir/bin/ExtractSAMRawReads.py $SAMData
+  mv ${SAMData}.Reads ${SAMData}.${id}.Reads
+  paste ${SAMData}.${id}.bed6 ${SAMData}.${id}.Reads |sort -k7,7 > ${SAMData}.${id}.bed7.sorted
+  awk '{OFS="\t";print $1,$2,$3,$6,$7}' ${SAMData}.${id}.bed7.sorted |uniq -c > ${SAMData}.${id}.bed7.sorted.uniq
+  
+  awk '{print $6}' ${SAMData}.${id}.bed7.sorted.uniq |uniq -c|awk '{print $1}' > ${SAMData}.${id}.bed7.sorted.uniq.seq
+  python $HomeDir/bin/GetBed2Col5.py ${SAMData}.${id}.bed7.sorted.uniq.seq ${SAMData}.${id}.bed7.sorted.uniq.seq.rep
+  paste ${SAMData}.${id}.bed7.sorted.uniq ${SAMData}.${id}.bed7.sorted.uniq.seq.rep | awk '{OFS="\t";print $2,$3,$4,$1,$7,$5,$6}' > ${SAMData}.${id}.bed2
+  sort -V -k1,1 -k2,2 ${SAMData}.${id}.bed2 > ${SAMData}.bed2
+  
+  rm -rf ${SAMData}.${id}.*
 }
 
 echo "*****************************************************************************"
@@ -462,7 +467,7 @@ bowtie \
     2> $OtherDir/${OutputSuffix}.${genome}.rRNA.log && \
     samtools view -b $OtherDir/${OutputSuffix}.${genome}.rRNA.sam > $OtherDir/${OutputSuffix}.${genome}.rRNA.bam && \
     echo "   Done rRNA mapping"
-	rRNAReads=`head -2 $OtherDir/${OutputSuffix}.${genome}.rRNA.log | tail -1 | awk '{print $9}'`
+	rRNAReads=`grep "^#" $OtherDir/${OutputSuffix}.${genome}.rRNA.log |head -2| tail -1 |sed 's/.*://'| awk '{print $1}'`
 	for i in {18..35};do echo $i;done > ${OutputSuffix}.RefLendis
 	echo "   Calculating length distribution"
 	GetUniqueLendis $OtherDir/${OutputSuffix}.${genome}.rRNA.sam ${OutputSuffix}.RefLendis
@@ -484,7 +489,7 @@ bowtie \
     2> $OtherDir/${OutputSuffix}.${genome}.tRNA.log && \
     samtools view -b $OtherDir/${OutputSuffix}.${genome}.tRNA.sam > $OtherDir/${OutputSuffix}.${genome}.tRNA.bam && \
     echo "   Done tRNA mapping"
-	tRNAReads=`head -2 $OtherDir/${OutputSuffix}.${genome}.tRNA.log | tail -1 | awk '{print $9}'`
+	tRNAReads=`grep "^#" $OtherDir/${OutputSuffix}.${genome}.tRNA.log |head -2| tail -1 | sed 's/.*://'|awk '{print $1}'`
 	echo "   Calculating length distribution"
 	GetUniqueLendis $OtherDir/${OutputSuffix}.${genome}.tRNA.sam ${OutputSuffix}.RefLendis
 	rm -rf $OtherDir/${OutputSuffix}.${genome}.tRNA.sam
@@ -505,7 +510,7 @@ bowtie \
     2> $OtherDir/${OutputSuffix}.${genome}.snRNA.log && \
     samtools view -b $OtherDir/${OutputSuffix}.${genome}.snRNA.sam > $OtherDir/${OutputSuffix}.${genome}.snRNA.bam && \
     echo "   Done snRNA mapping"
-	snRNAReads=`head -2 $OtherDir/${OutputSuffix}.${genome}.snRNA.log | tail -1 | awk '{print $9}'`
+	snRNAReads=`grep "^#" $OtherDir/${OutputSuffix}.${genome}.snRNA.log |head -2| tail -1 | sed 's/.*://'|awk '{print $1}'`
 	echo "   Calculating length distribution"
 	GetUniqueLendis $OtherDir/${OutputSuffix}.${genome}.snRNA.sam ${OutputSuffix}.RefLendis
 	rm -rf $OtherDir/${OutputSuffix}.${genome}.snRNA.sam
@@ -526,7 +531,7 @@ bowtie \
     2> $OtherDir/${OutputSuffix}.${genome}.snoRNA.log && \
     samtools view -b $OtherDir/${OutputSuffix}.${genome}.snoRNA.sam > $OtherDir/${OutputSuffix}.${genome}.snoRNA.bam && \
     echo "   Done snoRNA mapping"
-	snoRNAReads=`head -2 $OtherDir/${OutputSuffix}.${genome}.snoRNA.log | tail -1 | awk '{print $9}'`
+	snoRNAReads=`grep "^#" $OtherDir/${OutputSuffix}.${genome}.snoRNA.log |head -2| tail -1 | sed 's/.*://'|awk '{print $1}'`
 	echo "   Calculating length distribution"
 	GetUniqueLendis $OtherDir/${OutputSuffix}.${genome}.snoRNA.sam ${OutputSuffix}.RefLendis
 	rm -rf $OtherDir/${OutputSuffix}.${genome}.snoRNA.sam
@@ -550,7 +555,7 @@ bowtie \
     echo "      Calculating length distribution"
     GetUniqueLendis $miRNADir/${OutputSuffix}.clean.${genome}.miRNAAnno.sam ${OutputSuffix}.RefLendis
     echo "      Summarizing miRNA counts"
-	miRNAAnnoReads=`head -2 $miRNADir/${OutputSuffix}.clean.${genome}.miRNAAnno.log | tail -1 | awk '{print $9}'`
+	miRNAAnnoReads=`grep "^#" $miRNADir/${OutputSuffix}.clean.${genome}.miRNAAnno.log |head -2| tail -1 | sed 's/.*://'|awk '{print $1}'`
 	samtools view -b $miRNADir/${OutputSuffix}.clean.${genome}.miRNAAnno.sam > $miRNADir/${OutputSuffix}.clean.${genome}.miRNAAnno.bam
 	bedtools bamtobed -i $miRNADir/${OutputSuffix}.clean.${genome}.miRNAAnno.bam > $miRNADir/${OutputSuffix}.clean.${genome}.miRNAAnno.bed6.t
 	grep -v "@" $miRNADir/${OutputSuffix}.clean.${genome}.miRNAAnno.sam | awk '{print $10}' > $miRNADir/${OutputSuffix}.clean.${genome}.miRNAAnno.sam.seq
@@ -583,7 +588,7 @@ bowtie \
     echo "      Calculating length distribution"
     GetUniqueLendis $miRNADir/${OutputSuffix}.clean.${genome}.miRNAAnno_mature.sam ${OutputSuffix}.RefLendis
     echo "      Summarizing miRNA counts"
-	miRNAAnnoReads_mature=`head -2 $miRNADir/${OutputSuffix}.clean.${genome}.miRNAAnno_mature.log | tail -1 | awk '{print $9}'`
+	miRNAAnnoReads_mature=`grep "^#" $miRNADir/${OutputSuffix}.clean.${genome}.miRNAAnno_mature.log |head -2| tail -1 | sed 's/.*://'|awk '{print $1}'`
 	samtools view -F 0x10 -b $miRNADir/${OutputSuffix}.clean.${genome}.miRNAAnno_mature.sam > $miRNADir/${OutputSuffix}.clean.${genome}.miRNAAnno_mature.bam   #Only keep sense mapping
 	bedtools bamtobed -i $miRNADir/${OutputSuffix}.clean.${genome}.miRNAAnno_mature.bam > $miRNADir/${OutputSuffix}.clean.${genome}.miRNAAnno_mature.bed6.t
 	samtools view $miRNADir/${OutputSuffix}.clean.${genome}.miRNAAnno_mature.bam | awk '{print $10}' > $miRNADir/${OutputSuffix}.clean.${genome}.miRNAAnno_mature.bam.seq
@@ -616,7 +621,7 @@ bowtie \
     echo "   Calculating length distribution"
     GetUniqueLendis $miRNADir/${OutputSuffix}.clean.${genome}.miRNAAllSpecies.sam ${OutputSuffix}.RefLendis
     echo "   Summarizing miRNA counts"
-	miRNAAnnoReads_AllSpecies=`head -2 $miRNADir/${OutputSuffix}.clean.${genome}.miRNAAllSpecies.log | tail -1 | awk '{print $9}'`
+	miRNAAnnoReads_AllSpecies=`grep "^#" $miRNADir/${OutputSuffix}.clean.${genome}.miRNAAllSpecies.log |head -2| tail -1 | sed 's/.*://'|awk '{print $1}'`
 	samtools view -F 0x10 -b $miRNADir/${OutputSuffix}.clean.${genome}.miRNAAllSpecies.sam > $miRNADir/${OutputSuffix}.clean.${genome}.miRNAAllSpecies.bam   #Only keep sense mapping
 	FilteredMapped=`samtools view $miRNADir/${OutputSuffix}.clean.${genome}.miRNAAllSpecies.bam | wc -l`
 	bedtools bamtobed -i $miRNADir/${OutputSuffix}.clean.${genome}.miRNAAllSpecies.bam > $miRNADir/${OutputSuffix}.clean.${genome}.miRNAAllSpecies.bed6.t
@@ -680,7 +685,7 @@ bowtie \
     2> $GenomeMappingDir/${OutputSuffix}.final.Less21.${genome}.log
     echo "      Calculating length distribution"
     if [ $gMappingTimes == "1" ];then
-    	GenomeMappedLess21=`head -2 $GenomeMappingDir/${OutputSuffix}.final.Less21.${genome}.log | tail -1 | awk '{print $9}'`
+    	GenomeMappedLess21=`grep "^#" $GenomeMappingDir/${OutputSuffix}.final.Less21.${genome}.log |head -2| tail -1 | sed 's/.*://'|awk '{print $1}'`
     	GetUniqueLendis $GenomeMappingDir/${OutputSuffix}.final.Less21.${genome}.sam ${OutputSuffix}.RefLendis
     else
     	GenomeMappedLess21=`grep -v "@" $GenomeMappingDir/${OutputSuffix}.final.Less21.${genome}.sam | awk '{print $1}'|sort|uniq|wc -l`
@@ -688,8 +693,9 @@ bowtie \
     fi
     samtools view -b $GenomeMappingDir/${OutputSuffix}.final.Less21.${genome}.sam > $GenomeMappingDir/${OutputSuffix}.final.Less21.${genome}.bam && \
     rm -rf $GenomeMappingDir/${OutputSuffix}.final.Less21.${genome}.sam
+    samtools sort -T $GenomeMappingDir/aln.sorted $GenomeMappingDir/${OutputSuffix}.final.Less21.${genome}.bam -o $GenomeMappingDir/${OutputSuffix}.final.Less21.${genome}.sorted.bam
+    rm -rf $GenomeMappingDir/${OutputSuffix}.final.Less21.${genome}.bam
     echo "      Done small RNA mapping: length < 21 nt"
-    
 else
 	echo "      No small RNAs to map, length < 21 nt"
 fi
@@ -710,7 +716,7 @@ bowtie \
     2> $GenomeMappingDir/${OutputSuffix}.final.21-23.${genome}.log
     echo "      Calculating length distribution"
     if [ $gMappingTimes == "1" ];then
-    	GenomeMappedLess2123=`head -2 $GenomeMappingDir/${OutputSuffix}.final.21-23.${genome}.log | tail -1 | awk '{print $9}'`
+    	GenomeMappedLess2123=`grep "^#" $GenomeMappingDir/${OutputSuffix}.final.21-23.${genome}.log |head -2| tail -1 | sed 's/.*://'|awk '{print $1}'`
     	GetUniqueLendis $GenomeMappingDir/${OutputSuffix}.final.21-23.${genome}.sam ${OutputSuffix}.RefLendis
     else
     	GenomeMappedLess21=`grep -v "@" $GenomeMappingDir/${OutputSuffix}.final.21-23.${genome}.sam | awk '{print $1}'|sort|uniq|wc -l`
@@ -718,13 +724,15 @@ bowtie \
     fi
     samtools view -b $GenomeMappingDir/${OutputSuffix}.final.21-23.${genome}.sam > $GenomeMappingDir/${OutputSuffix}.final.21-23.${genome}.bam && \
     rm -rf $GenomeMappingDir/${OutputSuffix}.final.21-23.${genome}.sam
+    samtools sort -T $GenomeMappingDir/aln.sorted $GenomeMappingDir/${OutputSuffix}.final.21-23.${genome}.bam -o $GenomeMappingDir/${OutputSuffix}.final.21-23.${genome}.sorted.bam
+    rm -rf $GenomeMappingDir/${OutputSuffix}.final.21-23.${genome}.bam
     echo "      Done small RNA mapping: 21 nt < length < 23 nt"
-    
 else
 	echo "      No small RNAs to map, length 21 nt < length < 23 nt"
 fi
 
 echo "   c, Aligning small RNAs: length > 23 nt"
+echo "      Only report one location, for piRNA cluster prediction"
 if [ -s "$miRNADir/${OutputSuffix}.clean.${genome}.No_miRNAAnno.No_miRNAAllSpecies.Over23.fastq" ];then
 bowtie \
 	-S \
@@ -740,7 +748,7 @@ bowtie \
     2> $GenomeMappingDir/${OutputSuffix}.final.Over23.${genome}.log
     echo "      Calculating length distribution"
     if [ $gMappingTimes == "1" ];then
-    	GenomeMappedOver23=`head -2 $GenomeMappingDir/${OutputSuffix}.final.Over23.${genome}.log | tail -1 | awk '{print $9}'`
+    	GenomeMappedOver23=`grep "^#" $GenomeMappingDir/${OutputSuffix}.final.Over23.${genome}.log |head -2| tail -1 | sed 's/.*://'|awk '{print $1}'`
     	GetUniqueLendis $GenomeMappingDir/${OutputSuffix}.final.Over23.${genome}.sam  ${OutputSuffix}.RefLendis
     else
     	GenomeMappedOver23=`grep -v "@" $GenomeMappingDir/${OutputSuffix}.final.Over23.${genome}.sam | awk '{print $1}'|sort|uniq|wc -l`
@@ -748,17 +756,39 @@ bowtie \
     fi
     samtools view -b $GenomeMappingDir/${OutputSuffix}.final.Over23.${genome}.sam > $GenomeMappingDir/${OutputSuffix}.final.Over23.${genome}.bam
     echo "      Extracting sequences"
-    python $HomeDir/bin/ExtractSAMRawReads.py $GenomeMappingDir/${OutputSuffix}.final.Over23.${genome}.sam
     echo "      Done small RNA mapping: length > 23 nt"
-	cd $piRNADir && ln -s ../genome_mapping/${OutputSuffix}.final.Over23.${genome}.bam ${OutputSuffix}.final.Over23.${genome}.bam && cd ../
-	rm -rf $GenomeMappingDir/${OutputSuffix}.final.Over23.${genome}.sam
+  samtools sort -T $GenomeMappingDir/aln.sorted $GenomeMappingDir/${OutputSuffix}.final.Over23.${genome}.bam -o $GenomeMappingDir/${OutputSuffix}.final.Over23.${genome}.sorted.bam
+  samtools view $GenomeMappingDir/${OutputSuffix}.final.Over23.${genome}.sorted.bam > $GenomeMappingDir/${OutputSuffix}.final.Over23.${genome}.sorted.sam
+  python $HomeDir/bin/ExtractSAMRawReads.py $GenomeMappingDir/${OutputSuffix}.final.Over23.${genome}.sorted.sam
+  cd $piRNADir && ln -s ../genome_mapping/${OutputSuffix}.final.Over23.${genome}.sorted.bam ${OutputSuffix}.final.Over23.${genome}.sorted.bam && cd ../
+  rm -rf $GenomeMappingDir/${OutputSuffix}.final.Over23.${genome}.sam
+  rm -rf $GenomeMappingDir/${OutputSuffix}.final.Over23.${genome}.bam
 else
 	echo "      No small RNAs to map, length > 23 nt"
 fi
 
+echo "   d, Aligning all small RNAs to the genome, for final track generation"
+echo "      Only keep one mapping location for multimapping reads"
+bowtie \
+  -S \
+  --best \
+  -k $gMappingTimes \
+  -v $GenomeMM \
+  -p $CPU \
+  --no-unal \
+    $HomeDir/$genome/Index/bowtieIndex/bowtieIndex \
+    -q $Data \
+    1> $GenomeMappingDir/${OutputSuffix}.${genome}.sam \
+    2> $GenomeMappingDir/${OutputSuffix}.${genome}.log && \
+    samtools view -b $GenomeMappingDir/${OutputSuffix}.${genome}.sam > $GenomeMappingDir/${OutputSuffix}.${genome}.bam && \
+    samtools sort -T $GenomeMappingDir/aln.sorted $GenomeMappingDir/${OutputSuffix}.${genome}.bam -o $GenomeMappingDir/${OutputSuffix}.${genome}.sorted.bam && \
+    rm -rf $GenomeMappingDir/aln.sorted $GenomeMappingDir/${OutputSuffix}.${genome}.bam
+    echo "      Done whole genome smRNA mapping"
+
 echo "*****************************************************************************"
 echo "12. Direct transposon mapping using reads > 23 nt, reporting all alignments"
 if [ -s "$miRNADir/${OutputSuffix}.clean.${genome}.No_miRNAAnno.No_miRNAAllSpecies.Over23.fastq" ];then
+cd $TEDir && ln -s ../$miRNADir/${OutputSuffix}.clean.${genome}.No_miRNAAnno.No_miRNAAllSpecies.Over23.fastq && cd ../
 bowtie \
 	-S \
 	--best \
@@ -767,14 +797,15 @@ bowtie \
 	-p $CPU \
 	--no-unal \
     $HomeDir/$genome/Index/Sm_TE/Sm_TE \
-    -q $miRNADir/${OutputSuffix}.clean.${genome}.No_miRNAAnno.No_miRNAAllSpecies.Over23.fastq  \
-    1> $piRNADir/${OutputSuffix}.final.Over23.${genome}.TE.sam \
-    2> $piRNADir/${OutputSuffix}.final.Over23.${genome}.TE.log
-	TEMapped=`grep -v "@" $piRNADir/${OutputSuffix}.final.Over23.${genome}.TE.sam | awk '{print $1}'|sort|uniq|wc -l`
-    GetMultiLendis $piRNADir/${OutputSuffix}.final.Over23.${genome}.TE.sam ${OutputSuffix}.RefLendis
-    samtools view -b $piRNADir/${OutputSuffix}.final.Over23.${genome}.TE.sam > $GenomeMappingDir/${OutputSuffix}.final.Over23.${genome}.TE.bam && \
-    rm -rf $GenomeMappingDir/${OutputSuffix}.final.Over23.${genome}.TE.sam
-    echo "   Done small RNA mapping: length > 23 nt"
+    -q $TEDir/${OutputSuffix}.clean.${genome}.No_miRNAAnno.No_miRNAAllSpecies.Over23.fastq  \
+    1> $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.sam \
+    2> $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.log      
+	TEMapped=`grep -v "@" $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.sam | awk '{print $1}'|sort|uniq|wc -l`
+  GetMultiLendis $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.sam ${OutputSuffix}.RefLendis
+  ConvertSAM2Bed2 $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.sam
+  mv $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.sam.bed2 $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.bed2
+  awk '{print $1}' $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.bed2 |sort|uniq -c|awk '{OFS="\t";print $2,$1}' > $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.bed2.count
+  echo "   Done small RNA mapping: length > 23 nt"
 else
 	echo "   No small RNAs to map, length > 23 nt"
 fi
@@ -800,7 +831,7 @@ python $HomeDir/bin/CalculateFastqLendis.py $GenomeMappingDir/${OutputSuffix}.fi
 paste $GenomeMappingDir/${OutputSuffix}.final.Less21.unmapped.fastq.Lendis $GenomeMappingDir/${OutputSuffix}.final.21-23.unmapped.fastq.Lendis \
 	$GenomeMappingDir/${OutputSuffix}.final.Over23.unmapped.fastq.Lendis | awk '{OFS="\t";print $1,$2+$4+$6}' > $GenomeMappingDir/${OutputSuffix}.final.unmapped.Lendis
 echo "   Generating Lendis figures"
-Rscript --vanilla $HomeDir/bin/PlotLendis_cmd.R ${OutputSuffix} ${genome} ${Norm} > /dev/null && mv ${OutputSuffix}*pdf $FiguresDir && \
+/home/yexinhai/miniconda3/envs/R4.1/bin/Rscript --vanilla $HomeDir/bin/PlotLendis_cmd.R ${OutputSuffix} ${genome} ${Norm} > /dev/null && mv ${OutputSuffix}*pdf $FiguresDir && \
 	echo "   8 figures generated"
 
 echo "*****************************************************************************"
@@ -849,10 +880,32 @@ echo -e "Normalization:\t${Norm}" >> $TABLE
 echo -e "Unmapped:\t${GenomeUnmappedReads}" >> $TABLE
 
 echo "*****************************************************************************"
-echo "15. piRNA analysis"
+echo "15. Generate bigWig tracks for visualization"
+echo "   a, Preparing tracks for whole genome smRNA mapping data"
+echo "      Multi-mappers only reported to 1 location"
+ScalingPlus=`calculating 1/$Norm`
+ScalingMinus=`calculating -1/$Norm`
+echo "      Using normalization: "$Norm
+Databam=$GenomeMappingDir/${OutputSuffix}.${genome}.sorted.bam
+DatabamPre=$GenomeMappingDir/${OutputSuffix}.${genome}.sorted
+bedtools genomecov -bga -split -strand + -ibam ${Databam} -scale $ScalingPlus | sort -k1,1 -k2,2n > ${DatabamPre}.plus.bedGraph
+bedtools genomecov -bga -split -strand - -ibam ${Databam} -scale $ScalingMinus | sort -k1,1 -k2,2n > ${DatabamPre}.minus.bedGraph
+awk '$4!=0' ${DatabamPre}.plus.bedGraph > ${DatabamPre}.plus.filtered.bedGraph
+awk '$4!=0' ${DatabamPre}.minus.bedGraph > ${DatabamPre}.minus.filtered.bedGraph
+$HomeDir/bin/bedGraphToBigWig ${DatabamPre}.plus.bedGraph $HomeDir/$genome/Sequence/${genome}.ChromInfo.txt ${DatabamPre}.plus.bedGraph.bw
+$HomeDir/bin/bedGraphToBigWig ${DatabamPre}.minus.bedGraph $HomeDir/$genome/Sequence/${genome}.ChromInfo.txt ${DatabamPre}.minus.bedGraph.bw
+$HomeDir/bin/bedGraphToBigWig ${DatabamPre}.plus.filtered.bedGraph $HomeDir/$genome/Sequence/${genome}.ChromInfo.txt ${DatabamPre}.plus.filtered.bedGraph.bw
+$HomeDir/bin/bedGraphToBigWig ${DatabamPre}.minus.filtered.bedGraph $HomeDir/$genome/Sequence/${genome}.ChromInfo.txt ${DatabamPre}.minus.filtered.bedGraph.bw
+mv ${DatabamPre}.plus.bedGraph.bw $TracksDir
+mv ${DatabamPre}.minus.bedGraph.bw $TracksDir
+mv ${DatabamPre}.plus.filtered.bedGraph.bw $TracksDir
+mv ${DatabamPre}.minus.filtered.bedGraph.bw $TracksDir
+
+echo "*****************************************************************************"
+echo "16. piRNA analysis"
 echo "   Formatting mapped piRNA reads (> 23 nt)"
-bedtools bamtobed -i $piRNADir/${OutputSuffix}.final.Over23.${genome}.bam > $piRNADir/${OutputSuffix}.final.Over23.${genome}.bed
-paste $piRNADir/${OutputSuffix}.final.Over23.${genome}.bed $GenomeMappingDir/${OutputSuffix}.final.Over23.${genome}.sam.Reads | awk '{OFS="\t";print $1,$2,$3,$7,0,$6}' > \
+bedtools bamtobed -i $GenomeMappingDir/${OutputSuffix}.final.Over23.${genome}.sorted.bam > $piRNADir/${OutputSuffix}.final.Over23.${genome}.bed
+paste $piRNADir/${OutputSuffix}.final.Over23.${genome}.bed $GenomeMappingDir/${OutputSuffix}.final.Over23.${genome}.sorted.sam.Reads | awk '{OFS="\t";print $1,$2,$3,$7,0,$6}' > \
 	$piRNADir/${OutputSuffix}.final.Over23.${genome}.bed6
 sort $piRNADir/${OutputSuffix}.final.Over23.${genome}.bed6 > $piRNADir/${OutputSuffix}.final.Over23.${genome}.bed6.sorted
 
@@ -866,22 +919,23 @@ python $HomeDir/bin/CalculateNucleotideCompo.py $piRNADir/${OutputSuffix}.final.
 cat $piRNADir/${OutputSuffix}.final.Over23.${genome}.bed6.sorted.23mer.NtCompo|awk '{print "   ",$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11}'
 
 echo "   generating piRNA composition figure"
-Rscript --vanilla $HomeDir/bin/CompositionPlot_cmd.R $piRNADir/${OutputSuffix}.final.Over23.${genome}.bed6.sorted.23mer.NtCompo "genome mapping" > /dev/null
+/home/yexinhai/miniconda3/envs/R4.1/bin/Rscript --vanilla $HomeDir/bin/CompositionPlot_cmd.R $piRNADir/${OutputSuffix}.final.Over23.${genome}.bed6.sorted.23mer.NtCompo "genome mapping" > /dev/null
 mv $piRNADir/${OutputSuffix}.final.Over23.${genome}.bed6.sorted.23mer.NtCompo.pdf $FiguresDir/
 
 echo "   Analyzing TE mapping piRNAs"
-python $HomeDir/bin/ExtractSAMRawReads.py $piRNADir/${OutputSuffix}.final.Over23.${genome}.TE.sam
-samtools view -b $piRNADir/${OutputSuffix}.final.Over23.${genome}.TE.sam > $piRNADir/${OutputSuffix}.final.Over23.${genome}.TE.bam
-bedtools bamtobed -i $piRNADir/${OutputSuffix}.final.Over23.${genome}.TE.bam > $piRNADir/${OutputSuffix}.final.Over23.${genome}.TE.bed
-paste $piRNADir/${OutputSuffix}.final.Over23.${genome}.TE.bed $piRNADir/${OutputSuffix}.final.Over23.${genome}.TE.sam.Reads |awk '{print $4,$7}'|uniq|awk '{print $2}'|cut -c1-23 > \
-	$piRNADir/${OutputSuffix}.final.Over23.${genome}.TE.sam.23mer
-python $HomeDir/bin/CalculateNucleotideCompo.py $piRNADir/${OutputSuffix}.final.Over23.${genome}.TE.sam.23mer
+python $HomeDir/bin/ExtractSAMRawReads.py $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.sam
+samtools view -b $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.sam > $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.bam
+bedtools bamtobed -i $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.bam > $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.bed
+paste $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.bed $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.sam.Reads |awk '{print $4,$7}'|uniq|awk '{print $2}'|cut -c1-23 > \
+	$TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.sam.23mer
+python $HomeDir/bin/CalculateNucleotideCompo.py $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.sam.23mer
+
 echo "   piRNA nucleotide composition calculation (use the first 23nt)"
-cat $piRNADir/${OutputSuffix}.final.Over23.${genome}.TE.sam.23mer.NtCompo|awk '{print "   ",$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11}'
+cat $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.sam.23mer.NtCompo|awk '{print "   ",$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11}'
 
 echo "   generating piRNA composition figure for TE mapping piRNAs"
-Rscript --vanilla $HomeDir/bin/CompositionPlot_cmd.R $piRNADir/${OutputSuffix}.final.Over23.${genome}.TE.sam.23mer.NtCompo "TE mapping" > /dev/null
-mv $piRNADir/${OutputSuffix}.final.Over23.${genome}.TE.sam.23mer.NtCompo.pdf $FiguresDir/
+/home/yexinhai/miniconda3/envs/R4.1/bin/Rscript --vanilla $HomeDir/bin/CompositionPlot_cmd.R $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.sam.23mer.NtCompo "TE mapping" > /dev/null
+mv $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.sam.23mer.NtCompo.pdf $FiguresDir/
 
 Weblogo=`weblogo --help 2> /dev/null|grep Usage|wc -l`
 if [ $Weblogo == "1" ];then
@@ -892,23 +946,24 @@ if [ $Weblogo == "1" ];then
 		$piRNADir/${OutputSuffix}.final.Over23.${genome}.bed6.sorted.23mer.RNA.pdf
 	
 	echo "   Plot SeqLogo figures for TE mapping piRNAs"	
-	sed 's/T/U/g' $piRNADir/${OutputSuffix}.final.Over23.${genome}.TE.sam.23mer > $piRNADir/${OutputSuffix}.final.Over23.${genome}.TE.sam.23mer.RNA
-	weblogo --composition none -F PDF -A rna -W 15 -n 62 -c classic -S 2 < $piRNADir/${OutputSuffix}.final.Over23.${genome}.TE.sam.23mer.RNA > \
-		$piRNADir/${OutputSuffix}.final.Over23.${genome}.TE.sam.23mer.RNA.pdf
+	sed 's/T/U/g' $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.sam.23mer > $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.sam.23mer.RNA
+	weblogo --composition none -F PDF -A rna -W 15 -n 62 -c classic -S 2 < $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.sam.23mer.RNA > \
+		$TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.sam.23mer.RNA.pdf
 		
 	mv $piRNADir/${OutputSuffix}.final.Over23.${genome}.bed6.sorted.23mer.RNA.pdf $FiguresDir/
-	mv $piRNADir/${OutputSuffix}.final.Over23.${genome}.TE.sam.23mer.RNA.pdf $FiguresDir/
-fi
-
-if [ $piCluster == "1" ];then
-	echo "   Run piRNA cluster prediction using PILFER... This can be time consuming"
-	python $HomeDir/bin/pilfer.py -i $piRNADir/${OutputSuffix}.final.Over23.${genome}.bed6.sorted.pilfer > \
-		$piRNADir/${OutputSuffix}.final.Over23.${genome}.bed6.sorted.pilfer.piCluster.bed
+	mv $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.sam.23mer.RNA.pdf $FiguresDir/
 fi
 
 #Cleaning
 rm -rf ${OutputSuffix}.RefLendis
-
+rm -rf $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.sam.Reads
+rm -rf ${DatabamPre}.plus.bedGraph ${DatabamPre}.minus.bedGraph
+rm -rf ${DatabamPre}.plus.filtered.bedGraph ${DatabamPre}.minus.filtered.bedGraph
+rm -rf $GenomeMappingDir/${OutputSuffix}.${genome}.sam
+#rm -rf $GenomeMappingDir/${OutputSuffix}.final.21-23.unmapped.fastq $GenomeMappingDir/${OutputSuffix}.final.Less21.unmapped.fastq
+rm -rf $GenomeMappingDir/${OutputSuffix}.final.Over23.${genome}.sorted.sam
+#rm -rf $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.bed
+#rm -rf $GenomeMappingDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.sam $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.bam
 
 echo "Time Started: "$St
 Ed=`date`
