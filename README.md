@@ -19,12 +19,12 @@ The above software can also be installed using conda, as below:
 ```
 #Create pipesmrnaseq environment
 conda create --name pipesmrnaseq
-conda install -n pipesmrnaseq -c bioconda bowtie
+conda install -n pipesmrnaseq -c bioconda bowtie=1.2.3    #This will automatically install python3.7
 conda install -n pipesmrnaseq -c bioconda star
 conda install -n pipesmrnaseq -c bioconda bedtools
 conda install -n pipesmrnaseq -c bioconda samtools
 conda install -n pipesmrnaseq -c bioconda fastqc
-conda install -n pipesmrnaseq -c bioconda weblogo    #This will automatically install python3
+conda install -n pipesmrnaseq -c bioconda weblogo
 conda install -n pipesmrnaseq -c bioconda git
 conda install -n pipesmrnaseq -c conda-forge r-base
 conda install -n pipesmrnaseq -c bioconda mirdeep2
