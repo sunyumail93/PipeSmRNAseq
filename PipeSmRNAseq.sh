@@ -831,7 +831,7 @@ python $HomeDir/bin/CalculateFastqLendis.py $GenomeMappingDir/${OutputSuffix}.fi
 paste $GenomeMappingDir/${OutputSuffix}.final.Less21.unmapped.fastq.Lendis $GenomeMappingDir/${OutputSuffix}.final.21-23.unmapped.fastq.Lendis \
 	$GenomeMappingDir/${OutputSuffix}.final.Over23.unmapped.fastq.Lendis | awk '{OFS="\t";print $1,$2+$4+$6}' > $GenomeMappingDir/${OutputSuffix}.final.unmapped.Lendis
 echo "   Generating Lendis figures"
-/home/yexinhai/miniconda3/envs/R4.1/bin/Rscript --vanilla $HomeDir/bin/PlotLendis_cmd.R ${OutputSuffix} ${genome} ${Norm} > /dev/null && mv ${OutputSuffix}*pdf $FiguresDir && \
+Rscript --vanilla $HomeDir/bin/PlotLendis_cmd.R ${OutputSuffix} ${genome} ${Norm} > /dev/null && mv ${OutputSuffix}*pdf $FiguresDir && \
 	echo "   8 figures generated"
 
 echo "*****************************************************************************"
@@ -919,7 +919,7 @@ python $HomeDir/bin/CalculateNucleotideCompo.py $piRNADir/${OutputSuffix}.final.
 cat $piRNADir/${OutputSuffix}.final.Over23.${genome}.bed6.sorted.23mer.NtCompo|awk '{print "   ",$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11}'
 
 echo "   generating piRNA composition figure"
-/home/yexinhai/miniconda3/envs/R4.1/bin/Rscript --vanilla $HomeDir/bin/CompositionPlot_cmd.R $piRNADir/${OutputSuffix}.final.Over23.${genome}.bed6.sorted.23mer.NtCompo "genome mapping" > /dev/null
+Rscript --vanilla $HomeDir/bin/CompositionPlot_cmd.R $piRNADir/${OutputSuffix}.final.Over23.${genome}.bed6.sorted.23mer.NtCompo "genome mapping" > /dev/null
 mv $piRNADir/${OutputSuffix}.final.Over23.${genome}.bed6.sorted.23mer.NtCompo.pdf $FiguresDir/
 
 echo "   Analyzing TE mapping piRNAs"
@@ -934,7 +934,7 @@ echo "   piRNA nucleotide composition calculation (use the first 23nt)"
 cat $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.sam.23mer.NtCompo|awk '{print "   ",$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11}'
 
 echo "   generating piRNA composition figure for TE mapping piRNAs"
-/home/yexinhai/miniconda3/envs/R4.1/bin/Rscript --vanilla $HomeDir/bin/CompositionPlot_cmd.R $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.sam.23mer.NtCompo "TE mapping" > /dev/null
+Rscript --vanilla $HomeDir/bin/CompositionPlot_cmd.R $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.sam.23mer.NtCompo "TE mapping" > /dev/null
 mv $TEDir/${OutputSuffix}.final.Over23.${genome}.DirectTE.sam.23mer.NtCompo.pdf $FiguresDir/
 
 Weblogo=`weblogo --help 2> /dev/null|grep Usage|wc -l`
