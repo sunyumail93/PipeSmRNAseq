@@ -6,7 +6,7 @@ This pipeline has been used in the following publication:
 1. Ye, X., Yang, Y., ..., Sun, Y.H., ..., 2022. [Genomic signatures associated with maintenance of genome stability and venom turnover in two parasitoid wasps](https://www.nature.com/articles/s41467-022-34202-y). _Nat Commun_, 13, 6417
 
 
-Some folder/files are shared with other Pipe* pipelines (i.e. PipeRNAseq and PipeRiboseq), such as the PipelineHomeDir folder, and scripts in /bin folder.
+Some folder/files are shared with other Pipe* pipelines (i.e. [PipeRNAseq](https://github.com/sunyumail93/PipeRNAseq) and [PipeRiboseq](https://github.com/sunyumail93/PipeRiboseq)), such as the `PipelineHomeDir` folder, and some scripts in the `bin` folder.
 
 ## Software prerequisites
 This pipeline is designed to run on Linux servers, and requires the following softwares. They need to be installed and added to the $PATH before using the pipeline.
@@ -53,7 +53,7 @@ One UCSC tools (from http://hgdownload.soe.ucsc.edu/admin/exe/) is used: faSize.
 Also, for Mac OS, set the pipeline home directory at PipeSmRNAseq.sh manually:
 `HomeDir="/Users/yusun/Downloads/PipelineHomeDir"`
 
-We suggest using proTRAC (https://www.smallrnagroup.uni-mainz.de/software.html) to predict piRNA clusters, using mapped small RNAs over 23nt from the `*final.Over23.${genome}.bed6.sorted` file
+After running this pipeline, we suggest running proTRAC (https://www.smallrnagroup.uni-mainz.de/software.html) to predict piRNA clusters, using mapped small RNAs over 23nt stored in the `*final.Over23.${genome}.bed6.sorted` file
 
 ## Pipeline setup
 
