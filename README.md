@@ -1,6 +1,11 @@
 # PipeSmRNAseq
 A comprehensive pipeline for small RNAseq data analysis.
 
+This pipeline has been used in the following publication:
+
+1. Ye, X., Yang, Y., ..., Sun, Y.H., ..., 2022. [Genomic signatures associated with maintenance of genome stability and venom turnover in two parasitoid wasps](https://www.nature.com/articles/s41467-022-34202-y). _Nat Commun_, 13, 6417
+
+
 Some folder/files are shared with other Pipe* pipelines (i.e. PipeRNAseq and PipeRiboseq), such as the PipelineHomeDir folder, and scripts in /bin folder.
 
 ## Software prerequisites
