@@ -3,8 +3,9 @@ A comprehensive pipeline for small RNAseq data analysis.
 
 This pipeline has been used in the following publication:
 
-1. Ye, X., Yang, Y., ..., Sun, Y.H., ..., 2022. [Genomic signatures associated with maintenance of genome stability and venom turnover in two parasitoid wasps](https://www.nature.com/articles/s41467-022-34202-y). _Nat Commun_, 13, 6417
+1. Ye, X., Yang, Y., ..., **Sun, Y.H.**, ..., 2022. [Genomic signatures associated with maintenance of genome stability and venom turnover in two parasitoid wasps](https://www.nature.com/articles/s41467-022-34202-y). _Nat Commun_, 13, 6417
 
+2. Liu, Z., Zhang, X., ..., **Sun, Y.H.$** and Huo, J.$ 2023. [Long- and short-read RNA sequencing from five reproductive organs of boar](https://www.nature.com/articles/s41597-023-02595-0). _Sci Data_, 10, 678 ($co-corresponding authors)
 
 Some folder/files are shared with other Pipe* pipelines (i.e. [PipeRNAseq](https://github.com/sunyumail93/PipeRNAseq) and [PipeRiboseq](https://github.com/sunyumail93/PipeRiboseq)), such as the `PipelineHomeDir` folder, and some scripts in the `bin` folder.
 
